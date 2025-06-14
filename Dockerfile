@@ -34,26 +34,12 @@ RUN dnf -y install cmake \
 RUN dnf clean all
 
 # 1) add dev user
-RUN useradd -m -s /bin/bash dev \
- && echo 'dev:changeme'  | chpasswd \
- && usermod -aG wheel dev
-
-RUN echo '%wheel ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-wheel \
- && chmod 0440 /etc/sudoers.d/99-wheel
+# RUN useradd -m -s /bin/bash dev \
+#  && echo 'dev:changeme'  | chpasswd \
+#  && usermod -aG wheel dev
 
 # 2) set a root password
 RUN echo 'root:changeme' | chpasswd
-
-# ---- relax sshd policy so passwords are accepted ----------------------------
-RUN set -eux; \
-    # enable password logins in general
-    sed -ri 's/^#?PasswordAuthentication .*/PasswordAuthentication yes/' \
-        /etc/ssh/sshd_config; \
-    # explicitly permit root over SSH (default in Rocky is “prohibit-password”)
-    sed -ri 's/^#?PermitRootLogin .*/PermitRootLogin yes/' \
-        /etc/ssh/sshd_config; \
-    # make sure PAM stays on (needed for password auth)
-    sed -ri 's/^#?UsePAM .*/UsePAM yes/' /etc/ssh/sshd_config
 
 # ---- prepare sshd -------------------------------------------------------------
 RUN mkdir -p /var/run/sshd \
@@ -65,9 +51,6 @@ RUN systemctl enable sshd
 
 # ---- remove 'Unprivileged users are not permitted to log in'
 RUN rm -rf /run/nologin
-
-USER dev
-WORKDIR /home/dev
 
 VOLUME ["/sys/fs/cgroup"]
 EXPOSE 22
