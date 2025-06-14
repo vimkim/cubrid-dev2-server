@@ -1,37 +1,34 @@
-## How To Configure?
+# How To Configure?
 
-1. Configure podman network (ipvlan).
+## Configure podman network (ipvlan)
 
 You might want to change the IP_RANGE.
 
-```
+```bash
 ./podman-network.sh
 ```
 
-It is known that such network drivers like ipvlan requires rootful podman, therefore you might need `sudo podman`.
+It is known that such network drivers like ipvlan requires rootful podman,
+therefore you might need `sudo podman`.
 
-2. Build Docker image (r8 with systemd).
+## Build Docker image (r8 with systemd)
 
-```
+```bash
 just build
 ```
 
 or,
 
-```
+```bash
 sudo docker build -t local/r8-systemd .
 ```
 
 Both are equivalent.
 
-3. Run containers
+## Run containers
 
-```
-just run
-```
+Edit containers.yaml file, and run
 
-or
-
-```
-./run-container.sh
+```bash
+python run_dev_containers.py
 ```

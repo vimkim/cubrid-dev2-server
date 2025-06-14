@@ -1,0 +1,14 @@
+# containers.yaml
+# One entry = one container
+containers:
+  - name: arst-cntr1
+    ip: 192.168.4.100
+    user: alice2
+
+  - name: arst-cntr2
+    ip: 192.168.4.101
+    user: alice
+
+  - name: arst-cntr3
+    ip: 192.168.4.102
+    user: bob
