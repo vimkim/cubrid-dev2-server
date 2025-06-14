@@ -3,3 +3,6 @@ build:
 
 run:
     ./run-container.sh
+
+run-containers:
+    python run_dev_containers.py
