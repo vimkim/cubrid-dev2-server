@@ -10,7 +10,7 @@ Behaviour
       – spec changed         → print a warning, leave container untouched.
 """
 
-import argparse, subprocess, sys, yaml, json, hashlib, shlex
+import argparse, subprocess, sys, yaml, json, hashlib, shlex, ipaddress
 from pathlib import Path
 
 IMAGE = "localhost/local/r8-systemd"
@@ -51,14 +51,76 @@ def current_hash(name) -> str:
         return ""
 
 
-def ensure_user(cname, user, *, dry=False):
-    shell = (
-        f"id -u {user} >/dev/null 2>&1 || "
-        f"(useradd -m -s /bin/bash {user} "
-        f"&& echo '{user}:changeme' | chpasswd "
-        f"&& usermod -aG wheel {user})"
-    )
-    sh(["sudo", "podman", "exec", cname, "bash", "-c", shell], dry=dry)
+# def ensure_user(cname, user, ip, *, dry=False):
+#     uid_gid = f"1{ip.split('.')[-1]}:1{ip.split('.')[-1]}"
+#
+#     shell = (
+#         f"id -u {user} >/dev/null 2>&1 || "
+#         f"(useradd -m -s /bin/Bash {user} "
+#         f"&& echo '{user}:changeme' | chpasswd "
+#         f"&& usermod -aG wheel {user})"
+#     )
+#     sh(["sudo", "podman", "exec", cname, "bash", "-c", shell], dry=dry)
+
+
+def ensure_user(
+    cname,
+    user,
+    ip,
+    *,
+    uid_gid=None,  # override auto-derived ID
+    password="changeme",  # initial passwd; set None to skip
+    wheel=True,  # add to wheel group?
+    dry=False,
+):
+    """
+    Ensure `user` exists inside running container `cname`, using a UID/GID that
+    maps deterministically from its IPv4 address (or a supplied uid_gid).
+
+    UID/GID scheme (default):
+        last_octet = <ip>.split('.')[-1]
+        uid_gid    = 11000 + last_octet       # 11001-11255 for a /24 subnet
+    """
+
+    # ── 1. Work out the numeric UID/GID ────────────────────────────────────────
+    if uid_gid is None:
+        try:
+            last_octet = int(ipaddress.IPv4Address(ip).packed[-1])
+        except ipaddress.AddressValueError as exc:
+            raise ValueError(f"Invalid IPv4 address: {ip}") from exc
+        uid_gid = 11000 + last_octet
+
+    # ── 2. Build the bash snippet that runs *inside* the container ─────────────
+    uq = shlex.quote(user)
+    pwq = shlex.quote(password) if password is not None else ""
+
+    # Indentless HEREDOC for clarity
+    script = f"""\
+set -eu
+
+# Create matching group if it does not exist
+getent group {uid_gid} >/dev/null || groupadd -g {uid_gid} {uq}
+
+# Create user if missing, with chosen UID/GID
+id -u {uq} >/dev/null 2>&1 || \\
+    useradd -m -u {uid_gid} -g {uid_gid} -s /bin/bash {uq}
+
+# (Re)-set password, if requested
+{"echo " + uq + ":" + pwq + " | chpasswd" if password else ""}
+
+# Optional sudo access
+{"usermod -aG wheel " + uq if wheel else ""}
+"""
+
+    cmd = ["sudo", "podman", "exec", cname, "bash", "-c", script]
+
+    # ── 3. Execute or dry-run ──────────────────────────────────────────────────
+    if dry:
+        print("DRY-RUN CMD:", " ".join(shlex.quote(c) for c in cmd))
+        print("----- begin script -----\n" + script + "------ end script ------")
+        return
+
+    sh(cmd)
 
 
 def run_container(name, spec, *, dry=False):
@@ -66,7 +128,7 @@ def run_container(name, spec, *, dry=False):
     ip = spec["ip"]
     vol = f"vol-{name}"
     label = f"{SPEC_LABEL_KEY}={spec_hash(spec)}"
-    hostname = spec.get("hostname", name + "-cntr")
+    hostname = spec.get("hostname", name)
 
     sh(
         [
@@ -94,7 +156,7 @@ def run_container(name, spec, *, dry=False):
         dry=dry,
     )
 
-    ensure_user(name, user, dry=dry)
+    ensure_user(name, user, ip, dry=dry)
     if not dry:
         print(f"▶ enter: podman exec -it --user {user} {name} bash")
 
@@ -121,7 +183,7 @@ def main():
         cur_hash = current_hash(name)
         if cur_hash == desired_hash:
             print(f"{name}: up-to-date; skipping")
-            ensure_user(name, spec.get("user", "dev"), dry=args.dry_run)
+            ensure_user(name, spec.get("user", "dev"), spec["ip"], dry=args.dry_run)
         else:
             print(
                 f"⚠ {name}: spec in YAML differs from running container "
