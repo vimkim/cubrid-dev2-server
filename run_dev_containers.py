@@ -1,25 +1,57 @@
 #!/usr/bin/env python3
 """
-Create Rocky-8 dev containers and (optionally) add a non-root user inside
-*without* rebuilding the image each time.
+Rocky-8 dev-container launcher (idempotent, non-destructive).
+
+Behaviour
+---------
+• If <name> does *not* exist  → create and label it.
+• If <name> exists:
+      – spec unchanged       → do nothing (still ensure the user exists).
+      – spec changed         → print a warning, leave container untouched.
 """
 
-import argparse, subprocess, sys, yaml
+import argparse, subprocess, sys, yaml, json, hashlib, shlex
 from pathlib import Path
 
 IMAGE = "localhost/local/r8-systemd"
 NETWORK = "dev2-net"
 CGROUP_MOUNT = "/sys/fs/cgroup:/sys/fs/cgroup:ro"
+SPEC_LABEL_KEY = "spec-hash"
 
 
-def sh(cmd, *, dry=False):
-    print("$", *cmd)
-    if not dry:
-        subprocess.run(cmd, check=True)
+# ──────────────────────────── helper wrappers ──────────────────────────────
+def sh(cmd, *, dry=False, capture=False):
+    if isinstance(cmd, str):
+        cmd = shlex.split(cmd)
+    if dry:
+        print("$", *cmd)
+        return ""
+    res = subprocess.run(cmd, check=True, capture_output=capture, text=True)
+    return res.stdout.strip() if capture else ""
+
+
+def spec_hash(spec: dict) -> str:
+    raw = json.dumps(spec, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def container_exists(name, *, dry=False) -> bool:
+    try:
+        sh(["sudo", "podman", "container", "exists", name], dry=dry)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def current_hash(name) -> str:
+    try:
+        fmt = f'{{{{ index .Config.Labels "{SPEC_LABEL_KEY}" }}}}'
+        return sh(["sudo", "podman", "inspect", "-f", fmt, name], capture=True)
+    except subprocess.CalledProcessError:
+        return ""
 
 
 def ensure_user(cname, user, *, dry=False):
-    """If <user> does not exist in <cname>, create it (plus wheel access)."""
     shell = (
         f"id -u {user} >/dev/null 2>&1 || "
         f"(useradd -m -s /bin/bash {user} "
@@ -29,47 +61,73 @@ def ensure_user(cname, user, *, dry=False):
     sh(["sudo", "podman", "exec", cname, "bash", "-c", shell], dry=dry)
 
 
+def run_container(name, spec, *, dry=False):
+    user = spec.get("user", "dev")
+    ip = spec["ip"]
+    vol = f"vol-{name}"
+    label = f"{SPEC_LABEL_KEY}={spec_hash(spec)}"
+    hostname = spec.get("hostname", name + "-cntr")
+
+    sh(
+        [
+            "sudo",
+            "podman",
+            "run",
+            "-d",
+            "--name",
+            name,
+            "--label",
+            label,
+            "--network",
+            NETWORK,
+            "--ip",
+            ip,
+            "--hostname",
+            hostname,
+            "--privileged",
+            "-v",
+            f"{vol}:/home",
+            "-v",
+            CGROUP_MOUNT,
+            IMAGE,
+        ],
+        dry=dry,
+    )
+
+    ensure_user(name, user, dry=dry)
+    if not dry:
+        print(f"▶ enter: podman exec -it --user {user} {name} bash")
+
+
+# ────────────────────────────────── main ────────────────────────────────────
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("-c", "--config", default="containers.yaml")
-    p.add_argument("--dry-run", action="store_true")
-    args = p.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-c", "--config", default="containers.yaml")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
 
-    cfg = yaml.safe_load(Path(args.config).read_text()).get("containers", [])
-    for spec in cfg:
-        name, ip = spec["name"], spec["ip"]
-        user = spec.get("user", "dev")  # default fallback
-        volume = f"vol-{name}"
+    specs = yaml.safe_load(Path(args.config).read_text()).get("containers", [])
 
-        # 1. start container
-        sh(
-            [
-                "sudo",
-                "podman",
-                "run",
-                "-d",
-                "--name",
-                name,
-                "--network",
-                NETWORK,
-                "--ip",
-                ip,
-                "--privileged",
-                "-v",
-                f"{volume}:/home",
-                "-v",
-                CGROUP_MOUNT,
-                IMAGE,
-            ],
-            dry=args.dry_run,
-        )
+    for spec in specs:
+        name = spec["name"]
+        desired_hash = spec_hash(spec)
 
-        # 2. add user (skipped in dry-run)
-        ensure_user(name, user, dry=args.dry_run)
+        if not container_exists(name, dry=args.dry_run):
+            print(f"Creating new container {name} …")
+            run_container(name, spec, dry=args.dry_run)
+            continue
 
-        # 3. convenience hint
-        if not args.dry_run:
-            print(f"▶ enter: sudo podman exec -it --user {user} {name} bash\n")
+        # container exists – compare hashes
+        cur_hash = current_hash(name)
+        if cur_hash == desired_hash:
+            print(f"{name}: up-to-date; skipping")
+            ensure_user(name, spec.get("user", "dev"), dry=args.dry_run)
+        else:
+            print(
+                f"⚠ {name}: spec in YAML differs from running container "
+                f"(wanted={desired_hash[:8]}…, current={cur_hash[:8]}…).\n"
+                f"  → No action taken. Recreate manually if desired."
+            )
 
 
 if __name__ == "__main__":
