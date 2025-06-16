@@ -21,7 +21,8 @@ RUN dnf -y update && dnf -y install epel-release
 RUN dnf -y install \
         openssh-server sudo which git vim-enhanced less \
         @'Development Tools' \
-        htop
+        htop \
+        xclip
 
 RUN dnf -y --enablerepo=powertools install libstdc++-static ninja-build
 RUN dnf -y install cmake \
@@ -30,6 +31,8 @@ RUN dnf -y install cmake \
         ncurses-devel \
         java-1.8.0-openjdk-devel \
         perl
+
+RUN dnf -y install util-linux-user
 
 RUN dnf clean all
 
@@ -48,9 +51,13 @@ RUN mkdir -p /var/run/sshd \
 # ---- enable the needed systemd units -----------------------------------------
 RUN systemctl enable sshd
 
-
 # ---- remove 'Unprivileged users are not permitted to log in'
 RUN rm -rf /run/nologin
+
+ENV EDITOR=vim
+
+# Parallel make, job slot size is half of the available CPU cores
+ENV MAKEFLAGS="-j $(($(nproc) / 2))"
 
 VOLUME ["/sys/fs/cgroup"]
 EXPOSE 22
