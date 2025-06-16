@@ -51,3 +51,39 @@ During development, we prioritize **build efficiency** over the final image size
 This trade-off is intentional and helps improve developer productivity and iteration speed.
 
 If a smaller image is desired for production deployment, a separate, more optimized Dockerfile (e.g., using multi-stage builds or distroless images) can be used.
+
+### IP address already in use
+
+Once I recraeted the ipvlan network, and create a container with the previously used IP address, I got the following error:
+
+```
+IP address already in use ...
+```
+
+Solution is the following. Caution: this will stop all podman processes and clear the network cache. Know what you are doing.
+
+```bash
+# Restart network namespace
+sudo ip netns list  # check for any leftover namespaces
+sudo ip netns delete <namespace_name>  # if any exist
+
+# Reload netowrk modules
+sudo systemctl restart NetworkManager
+sudo systemctl restart systemd-networkd
+```
+
+```bash
+# Stop all podman processes
+sudo pkill -f podman
+sudo pkill -f conmon
+```
+
+Clear any remaining network cache.
+
+```bash
+# Flush route cache
+sudo ip route flush cache
+
+# Clear ARP/neighbor cache
+sudo ip neigh flush all
+```
