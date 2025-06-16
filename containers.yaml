@@ -1,12 +1,12 @@
 # containers.yaml
 containers:
-  - name: minjun1
+  - name: hornetmj1
     ip: 192.168.4.101
-    user: minjun
+    user: hornetmj
 
-  - name: minjun2
+  - name: hornetmj2
     ip: 192.168.4.102
-    user: minjun
+    user: hornetmj
 
   - name: hgryoo1
     ip: 192.168.4.111
