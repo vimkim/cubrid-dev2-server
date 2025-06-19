@@ -1,5 +1,5 @@
 build:
-    sudo docker build -t local/r8-systemd .
+    sudo docker build -t local/r8-systemd ./rocky8
 
 run:
     ./run-container.sh
