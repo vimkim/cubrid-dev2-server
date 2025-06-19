@@ -13,7 +13,6 @@ Behaviour
 import argparse, subprocess, sys, yaml, json, hashlib, shlex, ipaddress
 from pathlib import Path
 
-IMAGE = "localhost/local/r8-systemd"
 NETWORK = "dev2-net"
 CGROUP_MOUNT = "/sys/fs/cgroup:/sys/fs/cgroup:ro"
 SPEC_LABEL_KEY = "spec-hash"
@@ -125,6 +124,7 @@ id -u {uq} >/dev/null 2>&1 || \\
 
 def run_container(name, spec, *, dry=False):
     user = spec.get("user", "dev")
+    image = spec.get("image", "localhost/local/r8-systemd")
     ip = spec["ip"]
     vol = f"vol-{name}"
     label = f"{SPEC_LABEL_KEY}={spec_hash(spec)}"
@@ -151,7 +151,7 @@ def run_container(name, spec, *, dry=False):
             f"{vol}:/home",
             "-v",
             CGROUP_MOUNT,
-            IMAGE,
+            image,
         ],
         dry=dry,
     )
