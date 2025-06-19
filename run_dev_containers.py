@@ -183,7 +183,7 @@ def main():
         cur_hash = current_hash(name)
         if cur_hash == desired_hash:
             print(f"{name}: up-to-date; skipping")
-            ensure_user(name, spec.get("user", "dev"), spec["ip"], dry=args.dry_run)
+            # ensure_user(name, spec.get("user", "dev"), spec["ip"], dry=args.dry_run)
         else:
             print(
                 f"⚠ {name}: spec in YAML differs from running container "
