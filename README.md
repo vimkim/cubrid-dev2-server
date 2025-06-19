@@ -33,6 +33,28 @@ Edit containers.yaml file, and run
 python run_dev_containers.py
 ```
 
+## Utility Scripts
+
+### podman-multiexec.sh
+
+In order to execute a script in multiple containers that match a specific filter, you can use the `podman-multiexec.sh` utility script.
+
+```bash
+Usage: ./utils/podman-multiexec.sh -f <filter> -s <script> [options]
+
+Options:
+  -f, --filter <filter>    Filter containers by name pattern
+  -s, --script <script>    Shell script to execute
+  -v, --verbose           Enable verbose output
+  -x, --execute           Actually execute the script (default is dry-run)
+  -h, --help              Show this help message
+
+Examples:
+  ./utils/podman-multiexec.sh -f vimkim -s abc.sh                    # Dry run (default)
+  ./utils/podman-multiexec.sh -f vimkim -s abc.sh --execute          # Actually execute
+  ./utils/podman-multiexec.sh -f nginx -s abc.sh -x                  # Actually execute
+```
+
 ## Q & A
 
 ### ❓ Why is the Docker image so large and why are there so many layers? 2 GB?
