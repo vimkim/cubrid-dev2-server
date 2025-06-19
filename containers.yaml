@@ -8,6 +8,18 @@ containers:
     ip: 192.168.4.102
     user: hornetmj
 
+  - name: hornetmj3
+    ip: 192.168.4.103
+    user: hornetmj
+
+  - name: hornetmj4
+    ip: 192.168.4.104
+    user: hornetmj
+
+  - name: hornetmj5
+    ip: 192.168.4.105
+    user: hornetmj
+
   - name: hgryoo1
     ip: 192.168.4.111
     user: hgryoo
