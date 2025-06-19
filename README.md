@@ -55,6 +55,14 @@ Examples:
   ./utils/podman-multiexec.sh -f nginx -s abc.sh -x                  # Actually execute
 ```
 
+#### ⚠️ Important Warnings
+
+- **Always include your username in the filter** to avoid affecting other users' containers
+- The filter supports regular expressions and wildcards due to podman's filtering capabilities
+- **DO NOT use broad patterns** like `'.*'` or `'*'` with destructive commands (e.g., `/bin/rm -rf`) as this can damage all matching containers
+- Always test with dry-run mode first (default behavior) before using the `-x` flag to execute
+- Use caution when executing system-level commands across multiple containers
+
 ## Q & A
 
 ### ❓ Why is the Docker image so large and why are there so many layers? 2 GB?
