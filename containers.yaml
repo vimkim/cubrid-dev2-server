@@ -68,6 +68,14 @@ containers:
     ip: 192.168.4.162
     user: chijun
 
+  - name: chijun3
+    ip: 192.168.4.163
+    user: chijun
+
+  - name: chijun4
+    ip: 192.168.4.164
+    user: chijun
+
   - name: yahong1
     ip: 192.168.4.171
     user: yahong
