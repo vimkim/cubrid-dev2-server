@@ -14,8 +14,9 @@ import argparse, subprocess, sys, yaml, json, hashlib, shlex, ipaddress
 from pathlib import Path
 
 NETWORK = "dev2-net"
-CGROUP_MOUNT = "/sys/fs/cgroup:/sys/fs/cgroup:ro"
+CGROUP_MOUNT = "/sys/fs/cgroup:/sys/fs/cgroup:rw"
 SPEC_LABEL_KEY = "spec-hash"
+DEFAULT_IMAGE = "localhost/local/r8-systemd:250708-ubi-init"
 
 
 # ──────────────────────────── helper wrappers ──────────────────────────────
@@ -124,7 +125,7 @@ id -u {uq} >/dev/null 2>&1 || \\
 
 def run_container(name, spec, *, dry=False):
     user = spec.get("user", "dev")
-    image = spec.get("image", "localhost/local/r8-systemd")
+    image = spec.get("image", DEFAULT_IMAGE)
     ip = spec["ip"]
     vol = f"vol-{name}"
     label = f"{SPEC_LABEL_KEY}={spec_hash(spec)}"
@@ -146,6 +147,8 @@ def run_container(name, spec, *, dry=False):
             ip,
             "--hostname",
             hostname,
+            "--systemd",
+            "always",
             "--privileged",
             "-v",
             f"{vol}:/home",

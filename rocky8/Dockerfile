@@ -1,19 +1,21 @@
 # ──────────────────────────────────────────────────────────────
 # Rocky 8.10 + systemd + OpenSSH + basic dev tooling
 # ──────────────────────────────────────────────────────────────
-FROM quay.io/rockylinux/rockylinux:8.10
+# FROM quay.io/rockylinux/rockylinux:8.10
+FROM quay.io/rockylinux/rockylinux:8-ubi-init
 
 ENV container docker               # lets systemd know it’s in a container
 
-RUN (cd /lib/systemd/system/sysinit.target.wants; \
-       for i in *; do [ "$i" = systemd-tmpfiles-setup.service ] || rm -f "$i"; done) && \
-    rm -f /lib/systemd/system/multi-user.target.wants/* \
-          /etc/systemd/system/*.wants/* \
-          /lib/systemd/system/local-fs.target.wants/* \
-          /lib/systemd/system/sockets.target.wants/*udev* \
-          /lib/systemd/system/sockets.target.wants/*initctl* \
-          /lib/systemd/system/basic.target.wants/* \
-          /lib/systemd/system/anaconda.target.wants/*
+## No need since we are using ubi-init
+# RUN (cd /lib/systemd/system/sysinit.target.wants; \
+#        for i in *; do [ "$i" = systemd-tmpfiles-setup.service ] || rm -f "$i"; done) && \
+#     rm -f /lib/systemd/system/multi-user.target.wants/* \
+#           /etc/systemd/system/*.wants/* \
+#           /lib/systemd/system/local-fs.target.wants/* \
+#           /lib/systemd/system/sockets.target.wants/*udev* \
+#           /lib/systemd/system/sockets.target.wants/*initctl* \
+#           /lib/systemd/system/basic.target.wants/* \
+#           /lib/systemd/system/anaconda.target.wants/*
 
 # ---- install OpenSSH, sudo and common dev tools -------------------------------
 RUN dnf -y update && dnf -y install epel-release
@@ -32,7 +34,7 @@ RUN dnf -y install cmake \
         java-1.8.0-openjdk-devel \
         perl
 
-RUN dnf -y install util-linux-user
+RUN dnf -y install util-linux-user passwd
 
 RUN dnf clean all
 
@@ -61,4 +63,4 @@ ENV MAKEFLAGS="-j $(($(nproc) / 2))"
 
 VOLUME ["/sys/fs/cgroup"]
 EXPOSE 22
-CMD ["/usr/sbin/init"]
+# CMD ["/usr/sbin/init"]
