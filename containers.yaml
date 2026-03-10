@@ -36,6 +36,14 @@ containers:
     ip: 192.168.4.122
     user: youngjun
 
+  - name: youngjun3
+    ip: 192.168.4.123
+    user: youngjun
+
+  - name: youngjun4
+    ip: 192.168.4.124
+    user: youngjun
+
   - name: yeunjun1
     ip: 192.168.4.131
     user: yeunjun
@@ -50,6 +58,14 @@ containers:
 
   - name: heexoo2
     ip: 192.168.4.142
+    user: heexoo
+
+  - name: heexoo3
+    ip: 192.168.4.143
+    user: heexoo
+
+  - name: heexoo4
+    ip: 192.168.4.144
     user: heexoo
 
   - name: vimkim1
