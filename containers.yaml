@@ -100,6 +100,14 @@ containers:
     ip: 192.168.4.172
     user: yahong
 
+  - name: lht1199-1
+    ip: 192.168.4.181
+    user: lht1199
+
+  - name: lht1199-2
+    ip: 192.168.4.182
+    user: lht1199
+
   - name: pgsql1
     ip: 192.168.4.201
     user: pgsql
