@@ -8,6 +8,11 @@ that look and feel like real LAN machines: stable IPs, SSH, sudo, and a persiste
 This repo is **not** CUBRID source — it is the infra recipe that lets each developer
 build and test CUBRID inside an isolated, reproducible container.
 
+Before changing privileges, networking, container architecture, developer isolation,
+resource limits, persistence, or startup behavior, read the
+[design context](docs/design-context.md). Record the user's answers there.
+Treat unanswered items as open questions.
+
 ---
 
 ## Mental model
