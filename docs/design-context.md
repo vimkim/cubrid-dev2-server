@@ -93,6 +93,16 @@ CPU·메모리 제한을 강제해야 하나요, 아니면 남는 자원을 자�
 **답변:** 한 개발자의 빌드가 CPU나 메모리를 과도하게 사용할 때, 사용량을 제한할 수 있어야 한다.
 제한은 컨테이너별로 적용한다.
 
+**`/tmp` 추가 답변 (2026-10-23):** 기본 `/tmp`를 디스크 기반으로 사용한다.
+사용자가 의도적으로 tmpfs를 만드는 것은 허용한다.
+
+사용자 원문:
+
+> well if I can make /tmp disk-backed, everything will be okay as long as they do not intentionally make the disk on tmpfs (which is acceptible if they intentionally did it)
+
+구체적인 CPU·RAM·스왑·tmpfs 상한과 적용 일정은 미승인 상태다.
+[자원 정책 제안](resource-policy.md)의 수치는 사용자 승인을 받은 값이 아니다.
+
 ## 7. 재생성과 재부팅 후 유지할 상태
 
 **질문:** 컨테이너 재생성과 호스트 재부팅 후 무엇이 유지되어야 하나요?
