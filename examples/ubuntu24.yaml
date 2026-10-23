@@ -1,0 +1,7 @@
+containers:
+  - name: vk-ubun24
+    ip: 192.168.4.159
+    user: vimkim
+    image: localhost/cubrid-ubuntu24:latest
+    systemd: false
+    manage_user: false

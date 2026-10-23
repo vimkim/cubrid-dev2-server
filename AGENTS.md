@@ -34,6 +34,11 @@ host  ──┬── ipvlan L2 ──┬── vimkim1   192.168.4.151   (rocky
 
 ## Core workflow
 
+Before changing container creation, resource limits, or mounts, read
+[the resource policy and migration procedure](docs/resource-policy.md).
+Live reconciliation requires a reviewed policy and prepared host resources.
+The example policy supports isolated previews and remains unapproved.
+
 ```bash
 # 1. Create the shared L2 network (one-time, per host reboot if it was destroyed)
 ./podman-network.sh                 # creates ipvlan L2 network 'dev2-net'
@@ -45,7 +50,8 @@ just build-ubuntu24                 # ubuntu24 (no systemd) →  localhost/cubri
 
 # 3. Reconcile containers from declarative spec
 just run-containers                 # = python run_dev_containers.py
-# Pass --dry-run to preview.
+# Preview one creation without host calls:
+/usr/bin/python3 -B run_dev_containers.py --resource-policy resource-policy.example.json --only vimkim1 --dry-run
 ```
 
 `run_dev_containers.py` is **idempotent and conservative**:
@@ -95,7 +101,6 @@ To apply a changed spec, the human must remove the container manually (preserves
 
 ## Known sharp edges (verify before relying on them)
 
-- `just run` invokes `./run-container.sh`, which was removed in commit `f8d4bfb`. The target is stale.
 - `containers.yaml` has no per-entry `image:` field, so every container — including `pgsql*` / `mysql*` — currently defaults to `local/r8-systemd`. The "pgsql/mysql" naming is aspirational; the images are still Rocky 8.
 - `podman-network.sh`'s header comment says the default `IP_RANGE` is `192.168.4.100/25`, but the code default is `/24`. Trust the code.
 - `podman-multiexec.sh` redirects exec stderr to `/dev/null`, hiding *why* a remote script failed. Strip the `2>/dev/null` when debugging.

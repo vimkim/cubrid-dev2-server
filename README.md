@@ -27,11 +27,17 @@ Both are equivalent.
 
 ## Run containers
 
-Edit containers.yaml file, and run
+Review [the resource policy and migration procedure](docs/resource-policy.md) first.
+Container creation requires an approved resource policy, a configured host pool, and verified disk-backed `/tmp` directories.
+Existing containers are never recreated automatically.
+
+Preview a proposed creation without host changes:
 
 ```bash
-python run_dev_containers.py
+/usr/bin/python3 -B run_dev_containers.py --resource-policy resource-policy.example.json --only vimkim1 --dry-run
 ```
+
+The example budget remains unapproved. Applying it requires separate host authorization.
 
 ## Utility Scripts
 

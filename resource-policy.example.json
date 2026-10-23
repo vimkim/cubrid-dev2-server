@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "approved": false,
+  "host_reserve": 68719476736,
+  "tmp_root": "/home/podman/dev2-tmp",
+  "pool": {
+    "slice": "dev2.slice",
+    "memory_high": 171798691840,
+    "memory_max": 188978561024,
+    "swap_max": 17179869184
+  },
+  "defaults": {
+    "memory_high": 17179869184,
+    "memory_max": 25769803776,
+    "swap_max": 2147483648,
+    "shm_size": 268435456,
+    "systemd_tmpfs_size": 268435456
+  },
+  "overrides": {
+    "lht1199-1": {
+      "memory_high": 25769803776,
+      "memory_max": 34359738368
+    }
+  }
+}

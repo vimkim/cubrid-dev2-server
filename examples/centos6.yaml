@@ -1,0 +1,7 @@
+containers:
+  - name: chijun0
+    ip: 192.168.4.160
+    image: localhost/cubridci:latest
+    systemd: false
+    manage_user: false
+    command: [tail, -f, /dev/null]

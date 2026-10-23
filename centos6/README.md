@@ -1,8 +1,11 @@
 ### how to run container?
 
 ```bash
-sudo podman run -d --name chijun0 --network dev2-net --ip 192.168.4.160 --hostname chijun0 --privileged -v vol-chijun0:/home localhost/cubridci:latest tail -f /dev/null
+just run-centos6-example
 ```
+
+This recipe uses `examples/centos6.yaml` and the reviewed resource policy.
+Read [the policy and migration procedure](../docs/resource-policy.md) before deployment.
 
 #### How to set up sshd?
 

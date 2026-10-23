@@ -12,9 +12,9 @@ Behaviour
 
 import argparse, subprocess, sys, yaml, json, hashlib, shlex, ipaddress
 from pathlib import Path
+from resource_policy import Policy
 
 NETWORK = "dev2-net"
-CGROUP_MOUNT = "/sys/fs/cgroup:/sys/fs/cgroup:rw"
 SPEC_LABEL_KEY = "spec-hash"
 DEFAULT_IMAGE = "localhost/local/r8-systemd:250708-ubi-init"
 
@@ -24,9 +24,9 @@ def sh(cmd, *, dry=False, capture=False):
     if isinstance(cmd, str):
         cmd = shlex.split(cmd)
     if dry:
-        print("$", *cmd)
+        print("$", shlex.join(cmd))
         return ""
-    res = subprocess.run(cmd, check=True, capture_output=capture, text=True)
+    res = subprocess.run(cmd, check=True, capture_output=capture, text=True, timeout=120)
     return res.stdout.strip() if capture else ""
 
 
@@ -39,8 +39,10 @@ def container_exists(name, *, dry=False) -> bool:
     try:
         sh(["sudo", "podman", "container", "exists", name], dry=dry)
         return True
-    except subprocess.CalledProcessError:
-        return False
+    except subprocess.CalledProcessError as error:
+        if error.returncode == 1:
+            return False
+        raise
 
 
 def current_hash(name) -> str:
@@ -123,12 +125,12 @@ id -u {uq} >/dev/null 2>&1 || \\
     sh(cmd)
 
 
-def run_container(name, spec, *, dry=False):
+def run_container(name, spec, policy, *, dry=False):
     user = spec.get("user", "dev")
     image = spec.get("image", DEFAULT_IMAGE)
     ip = spec["ip"]
     vol = f"vol-{name}"
-    label = f"{SPEC_LABEL_KEY}={spec_hash(spec)}"
+    label = f"{SPEC_LABEL_KEY}={spec_hash(effective_spec(spec, policy))}"
     hostname = spec.get("hostname", name)
 
     sh(
@@ -148,38 +150,83 @@ def run_container(name, spec, *, dry=False):
             "--hostname",
             hostname,
             "--systemd",
-            "always",
+            "always" if spec.get("systemd", True) else "false",
             "--privileged",
             "-v",
             f"{vol}:/home",
-            "-v",
-            CGROUP_MOUNT,
+            *policy.options(name),
             image,
+            *spec.get("command", []),
         ],
         dry=dry,
     )
 
-    ensure_user(name, user, ip, dry=dry)
+    if spec.get("manage_user", True):
+        ensure_user(name, user, ip, dry=dry)
     if not dry:
         print(f"▶ enter: podman exec -it --user {user} {name} bash")
 
 
 # ────────────────────────────────── main ────────────────────────────────────
-def main():
+def effective_spec(spec, policy):
+    return {**spec, "resource_policy": policy.identity(spec["name"])}
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("-c", "--config", default="containers.yaml")
     ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+    ap.add_argument("--resource-policy", default="resource-policy.json")
+    ap.add_argument("--only", action="append", help="Select an exact container name, repeatable")
+    ap.add_argument("--audit", action="store_true", help="Read-only inspect comparison; never create")
+    ap.add_argument("--inspect-json", help="Use a saved Podman JSON array for an offline audit")
+    args = ap.parse_args(argv)
+    if args.audit and args.dry_run:
+        ap.error("choose --audit or --dry-run")
+    if args.inspect_json and not args.audit:
+        ap.error("--inspect-json requires --audit")
 
-    specs = yaml.safe_load(Path(args.config).read_text()).get("containers", [])
+    all_specs = yaml.safe_load(Path(args.config).read_text()).get("containers", [])
+    specs = all_specs
+    policy = Policy.load(args.resource_policy)
+    names = [spec["name"] for spec in specs]
+    if len(set(names)) != len(names):
+        ap.error("container names must be unique")
+    if args.only and set(args.only) - set(names):
+        ap.error("--only names must exist in the configuration")
+    specs = [s for s in specs if not args.only or s["name"] in args.only]
+    for spec in specs:
+        policy.limits(spec["name"])
+        if not isinstance(spec.get("command", []), list) or any(
+            not isinstance(part, str) for part in spec.get("command", [])
+        ):
+            ap.error("command must be a list of strings")
+    if args.audit:
+        if args.inspect_json:
+            containers = json.loads(Path(args.inspect_json).read_text())
+        else:
+            ids = sh(["sudo", "-n", "podman", "ps", "-aq"], capture=True).split()
+            containers = json.loads(sh(["sudo", "-n", "podman", "inspect", *ids], capture=True)) if ids else []
+        rows = policy.audit(all_specs, containers)
+        if args.only:
+            rows = [row for row in rows if row["name"] in args.only]
+        print(json.dumps(rows, indent=2))
+        return
+    if args.dry_run:
+        print("Creation preview only. Existing containers and host preconditions are not inspected.")
+        for spec in specs:
+            run_container(spec["name"], spec, policy, dry=True)
+        return
+    # No Podman calls or host changes occur before the complete policy preflight.
+    policy.preflight(specs)
 
     for spec in specs:
         name = spec["name"]
-        desired_hash = spec_hash(spec)
+        desired_hash = spec_hash(effective_spec(spec, policy))
 
         if not container_exists(name, dry=args.dry_run):
             print(f"Creating new container {name} …")
-            run_container(name, spec, dry=args.dry_run)
+            run_container(name, spec, policy)
             continue
 
         # container exists – compare hashes
@@ -200,3 +247,5 @@ if __name__ == "__main__":
         main()
     except subprocess.CalledProcessError as e:
         sys.exit(e.returncode)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        sys.exit(f"Cannot reconcile containers: {e}")
