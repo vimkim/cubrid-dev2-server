@@ -44,8 +44,28 @@ CUBRID HA·복제 테스트나 CI 접속에 필요한가요?
 스위치에서 추가 MAC 주소를 제한했나요?
 bridge나 macvlan을 사용하다가 겪은 문제가 있었나요?
 
-**답변:** ipvlan이 macvlan보다 더 좋은 방식이라는 이야기를 듣고 선택했다.
-직접 비교하거나 검증하지는 않았다.
+**답변:**
+
+- ipvlan이 macvlan보다 더 좋은 방식이라는 이야기를 듣고 선택했다.
+  직접 비교하거나 검증하지는 않았다.
+- 외부에서 컨테이너로 직접 SSH 접속하려면 "host의 network driver"를 사용해야 하며,
+  bridge에서는 이것이 안 된다는 설명도 들었다. 이 설명은 검토가 필요하다고 밝혔다.
+
+### 공식 문서 검토 메모
+
+아래는 사용자 답변과 구분한 공식 문서 확인 결과다. 실제 호스트에서의 검증은 수행하지 않았다.
+
+- 기본 rootful bridge에서도 호스트 IP와 공개한 포트를 통해 외부에서 컨테이너 서비스에 접속할 수 있다.
+  이 방식은 컨테이너에 독립적인 LAN IP로 직접 접속하는 방식과 구분해야 한다.
+  [Podman 기본 네트워크 가이드](https://github.com/podman-container-tools/podman/blob/main/docs/tutorials/basic_networking.md#bridge)
+- `--network=host`는 호스트의 네트워크 네임스페이스를 공유한다.
+  ipvlan의 `parent` 옵션으로 호스트의 물리 인터페이스를 지정하는 것과는 다른 설정이다.
+  사용자가 들은 "host의 network driver"가 어느 설정을 의미했는지는 미확인이다.
+  [Podman 네트워크 모드](https://docs.podman.io/en/latest/markdown/podman-run.1.html#network-mode-net),
+  [네트워크 생성 옵션](https://docs.podman.io/en/latest/markdown/podman-network-create.1.html#opt-o-option)
+
+이 서버에서 포트 재할당 없이 독립적인 LAN IP를 제공할 수 있는 bridge 구성의 가능성과
+ipvlan·macvlan의 적합성 비교는 추가 검토가 필요하다.
 
 ## 4. VM 대신 컨테이너를 선택한 이유
 
@@ -53,7 +73,7 @@ bridge나 macvlan을 사용하다가 겪은 문제가 있었나요?
 메모리 사용량, 빌드 성능, 생성 속도, 관리 편의성 중 무엇이 중요했나요?
 서로 다른 커널까지 테스트할 필요는 없나요?
 
-**답변:** 미답변.
+**답변:** 구성이 유연하고 여러 CPU 코어를 활용할 수 있으며, 가볍고 관리하기 편해서 컨테이너를 선택했다.
 
 ## 5. 개발자 사이에 기대하는 격리 수준
 
