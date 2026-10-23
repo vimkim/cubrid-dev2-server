@@ -64,7 +64,7 @@ To apply a changed spec, the human must remove the container manually (preserves
 
 - `--driver ipvlan --mode l2` requires the kernel `ipvlan` module and CAP_NET_ADMIN, which **rootless podman cannot give us**. So every `podman` call is `sudo podman`.
 - The benefit is that each container gets a routable IP on the host's LAN — other dev2 hosts and CI can reach it like a normal machine. No port-forward gymnastics.
-- Trade-off: containers run **privileged** (needed for systemd inside) and root inside the container is real root on shared resources. Treat the host as a trusted LAN-only box.
+- Trade-off: containers run **privileged** and root inside the container is real root on shared resources. Treat the host as a trusted LAN-only box.
 
 ---
 
