@@ -10,6 +10,7 @@
     "swap_max": 17179869184
   },
   "defaults": {
+    "cpus": 8,
     "memory_high": 17179869184,
     "memory_max": 25769803776,
     "swap_max": 2147483648,

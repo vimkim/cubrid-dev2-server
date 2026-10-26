@@ -56,6 +56,37 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.policy.options("../../other")
 
+    def test_rejects_unbounded_invalid_and_subminimum_cpu_limits(self):
+        for value in (0, -1, 0.001, True, "8", float("inf"), float("nan"), 10 ** 400):
+            with self.subTest(value=value):
+                payload = copy.deepcopy(self.payload)
+                payload["defaults"]["cpus"] = value
+                with self.assertRaisesRegex(ValueError, "cpus"):
+                    resource_policy.Policy(payload)
+
+    def test_fractional_cpu_override_is_persistent_and_changes_spec_hash(self):
+        spec = {"name": "dev1", "ip": "192.168.4.151"}
+        before = launcher.spec_hash(launcher.effective_spec(spec, self.policy))
+        payload = copy.deepcopy(self.payload)
+        payload["overrides"]["dev1"] = {"cpus": 2.5}
+        policy = resource_policy.Policy(payload)
+        options = policy.options("dev1")
+        self.assertEqual(options[options.index("--cpus") + 1], "2.5")
+        self.assertEqual(policy.limits("other")["cpus"], 8)
+        self.assertNotEqual(before, launcher.spec_hash(launcher.effective_spec(spec, policy)))
+
+    def test_audit_normalizes_cpu_quota_and_detects_unlimited_cpu(self):
+        for cpu_fields, differs in (
+            ({"NanoCpus": 8_000_000_000}, False),
+            ({"CpuPeriod": 100000, "CpuQuota": 800000}, False),
+            ({"CpuPeriod": 100000, "CpuQuota": -1}, True),
+            ({}, True),
+        ):
+            with self.subTest(fields=cpu_fields):
+                row = self.policy.audit([{"name": "dev1"}],
+                    [{"Name": "/dev1", "HostConfig": cpu_fields}])[0]
+                self.assertEqual("cpus" in row["differences"], differs)
+
     def test_proposal_cannot_pass_preflight(self):
         with self.assertRaisesRegex(ValueError, "proposal"):
             self.policy.preflight([])

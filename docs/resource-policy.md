@@ -1,6 +1,6 @@
 # Container resource policy and disk-backed /tmp
 
-Status: prepared for review. No host change accompanies this patch.
+Repository integration approved on 2026-10-26. No host change accompanies this patch.
 
 The launcher applies runtime controls when it creates a container. Image settings alone cannot apply these controls.
 Existing containers remain unchanged. The launcher reports spec drift and never recreates a container automatically.
@@ -17,6 +17,7 @@ There is no fallback to unlimited creation when that file is absent.
 | Shared `dev2.slice` MemoryHigh | 160 GiB | Apply reclaim pressure before the pool ceiling |
 | Shared `dev2.slice` MemoryMax | 176 GiB | Bound concurrent container RAM charges |
 | Shared `dev2.slice` MemorySwapMax | 16 GiB | Bound aggregate container swap |
+| Default container CPU quota | 8 CPU equivalents | Bound each container's CPU time |
 | Default container memory.high / memory.max | 16 / 24 GiB | Bound each container within the pool |
 | Default container swap maximum | 2 GiB | Limit each container's swap allocation |
 | `lht1199-1` memory.high / memory.max | 24 / 32 GiB | Allow headroom above its observed 11.60 GiB anonymous allocation |
@@ -40,6 +41,12 @@ The sum of individual ceilings exceeds the pool ceiling. Concurrent containers s
 Per-container ceilings provide no guaranteed allocation or equal share per developer.
 Developers with several containers can consume more of the pool.
 Per-developer slices remain a possible later policy decision.
+
+The `cpus` field accepts finite counts of at least 0.01, including fractional values.
+It maps to Podman's `--cpus` quota and participates in spec hashing and drift audits.
+Each container can override its quota through the policy's `overrides` map.
+CPU quotas can run across available processors. They do not establish dedicated processor allocations.
+The example's 8-CPU quota remains a proposal and needs workload measurements before deployment approval.
 
 ## Preview and audit
 
@@ -130,6 +137,10 @@ Four remaining omitted names have no located maintained creation definition.
 An omitted container does not enter the new pool automatically.
 The aggregate protection is incomplete until every intended workload enters the pool or receives a separate approved budget.
 
+The confirmed recreation requirement preserves `/home` through its existing named volume.
+The user does not require a separate `/home` backup or persistence of the writable image layer.
+Preserve any additional data that the owner identifies for this migration before removing it.
+
 For each existing container:
 
 1. Agree the interruption with its owner.
@@ -139,10 +150,10 @@ For each existing container:
 5. Stop database writes with the owner's agreed procedure.
 6. Copy valuable `/tmp` data to verified disk storage before stopping the container.
 7. Check copied sizes, ownership, modes, and checksums where appropriate.
-8. Back up named volumes and valuable writable-layer changes independently.
+8. Reuse the existing `/home` volume. Preserve additional owner-selected data without imposing a separate home-backup requirement.
 9. Retain the old stopped container for rollback when practical. Preserve its IP and volume metadata.
 10. Create the replacement with the same name, IP, and `/home` volume through the reviewed launcher.
-11. Check the live cgroup parent, all limits, `/tmp` filesystem, sticky permissions, service health, and retained data.
+11. Check the live cgroup parent, CPU and memory limits, `/tmp` filesystem, sticky permissions, service health, and retained data.
 12. Check a container restart and a recreation before migrating another owner.
 
 Do not remove an old container or copy a live database as an assumed consistent backup.
@@ -169,6 +180,7 @@ Direct Podman commands remain an administrative bypass.
 Check container recreation with the same policy and persistent directories.
 Check service and pool restoration after a host restart in a disposable equivalent environment.
 Inspect the existing container restart mechanism before choosing lifecycle changes.
+Host-reboot restart behavior remains a user choice and can use a separate script.
 This patch does not enable a new host-wide container restart policy.
 
 ## Verification and references
@@ -178,7 +190,7 @@ This patch does not enable a new host-wide container restart policy.
 git diff --check
 ```
 
-The isolated tests check policy validation, swap translation, backing filesystems, parent limits, dry-run isolation,
+The isolated tests check CPU quotas, policy validation, swap translation, backing filesystems, parent limits, dry-run isolation,
 offline audits, access errors, spec drift, and preservation of existing containers.
 They do not start containers or prove restart persistence on a real host.
 

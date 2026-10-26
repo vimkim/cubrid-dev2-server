@@ -2,12 +2,13 @@
 
 import argparse
 import json
+import math
 import re
 import stat
 from pathlib import Path
 
 
-LIMITS = {"memory_high", "memory_max", "swap_max", "shm_size", "systemd_tmpfs_size"}
+LIMITS = {"cpus", "memory_high", "memory_max", "swap_max", "shm_size", "systemd_tmpfs_size"}
 
 
 class Policy:
@@ -42,7 +43,15 @@ class Policy:
     def _limits(values, required):
         if set(values) - (required | {"slice"}) or not required <= set(values):
             raise ValueError("policy contains missing or unknown limit fields")
-        for key in required:
+        if "cpus" in required:
+            cpus = values["cpus"]
+            try:
+                valid_cpu = type(cpus) in (int, float) and math.isfinite(cpus) and cpus >= 0.01
+            except OverflowError:
+                valid_cpu = False
+            if not valid_cpu:
+                raise ValueError("cpus must be a finite number of at least 0.01")
+        for key in required - {"cpus"}:
             value = values[key]
             minimum = 0 if key == "swap_max" else 1
             if type(value) is not int or value < minimum:
@@ -72,6 +81,7 @@ class Policy:
                 # The Rocky image declares /sys/fs/cgroup as an image volume.
                 # Do not obscure Podman's private cgroup mount with an anonymous volume.
                 "--image-volume", "ignore",
+                "--cpus", str(limits["cpus"]),
                 "--cgroup-conf", f"memory.high={limits['memory_high']}",
                 "--memory", str(limits["memory_max"]),
                 # Podman memory-swap is RAM + swap. systemd MemorySwapMax is swap alone.
@@ -146,6 +156,17 @@ class Policy:
             for key, wanted in fields.items():
                 if host.get(key) != wanted:
                     drift.append(key)
+            nano_cpus = host.get("NanoCpus") or 0
+            period = host.get("CpuPeriod") or 0
+            quota = host.get("CpuQuota") or 0
+            if nano_cpus > 0:
+                actual_cpus, precision = nano_cpus / 1_000_000_000, 1e-9
+            elif period > 0 and quota > 0:
+                actual_cpus, precision = quota / period, 1 / period
+            else:
+                actual_cpus, precision = 0, 1e-9
+            if not math.isclose(actual_cpus, limits["cpus"], rel_tol=0, abs_tol=precision):
+                drift.append("cpus")
             if str((host.get("CgroupConf") or {}).get("memory.high")) != str(limits["memory_high"]):
                 drift.append("memory.high (inspect unavailable or differs; verify live cgroup)")
             mounts = actual.get("Mounts", [])
