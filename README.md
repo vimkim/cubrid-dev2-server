@@ -35,16 +35,33 @@ environment without activation or an ambient PyYAML installation.
 
 ```bash
 just status --json
-just plan vimkim1 vimkim2 --json
-just apply vimkim1 vimkim2 --json
+just plan hornetmj1 hornetmj2 --json
+just apply hornetmj1 hornetmj2 --json
 ```
 
-Edit `containers.yaml` before planning a roster change. `status` and `plan`
-inspect all configured names by default. Pass exact names to select a subset.
+Edit `containers.yaml` before planning a roster change. `status` inspects all
+configured names by default. `plan` inspects enabled names. Pass exact names
+to select a subset.
 `apply` requires exact names or `--all`. It observes the selection again before
 creating any container. `just run-containers` is an alias for `just apply` and
 has the same selection requirement. Use `--config PATH` to select another YAML
 roster. Run `just` to list the available recipes.
+
+Each entry accepts `enabled`, a Boolean that defaults to `true`. To retain a
+declaration without allowing creation, set `enabled: false`:
+
+```yaml
+  - name: vimkim1
+    ip: 192.168.4.151
+    user: vimkim
+    enabled: false
+```
+
+`status` includes disabled entries and marks them as disabled. Default and
+`--all` selections for `plan` and `apply` skip them. Naming a disabled entry
+explicitly for `plan` or `apply` fails before Podman runs. Set `enabled: true`
+to allow creation again. Use Podman to stop or remove an existing container;
+`enabled` controls which entries the launcher can create.
 
 Live commands use rootful Podman because the containers use an ipvlan network.
 Run `just status`, `just plan`, and `just apply` as your normal user. When
@@ -64,7 +81,8 @@ An inspection error stops the command. It does not mean that containers are
 missing. Preview commands do not create containers or change accounts.
 
 The JSON output has `schema_version`, `operation`, `source`, and sorted
-`containers` fields. States are `missing`, `running`, or `stopped`.
+`containers` fields. Each container row includes its Boolean `enabled` setting.
+States are `missing`, `running`, or `stopped`.
 `declaration` compares the stored `spec-hash` label with the YAML entry. A
 matching label does not verify the actual image, mounts, account, or SSH access.
 `plan` includes the proposed command arguments and provisioning script. Errors

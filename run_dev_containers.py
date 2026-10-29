@@ -37,6 +37,7 @@ class Spec:
     hostname: str
     user: str
     declared_hash: str
+    enabled: bool
 
 
 @dataclass(frozen=True)
@@ -113,8 +114,13 @@ def load_specs(path: Path) -> Tuple[Spec, ...]:
         image = entry.get("image", DEFAULT_IMAGE)
         hostname = entry.get("hostname", name)
         user = entry.get("user", "dev")
+        enabled = entry.get("enabled", True)
         if not isinstance(name, str) or not NAME_PATTERN.fullmatch(name):
             raise InputError(f"Invalid container name: {name!r}.")
+        if "enable" in entry:
+            raise InputError(f"Use 'enabled', not 'enable', for {name}.")
+        if type(enabled) is not bool:
+            raise InputError(f"Container {name} requires a Boolean enabled value.")
         if not isinstance(user, str) or not USER_PATTERN.fullmatch(user):
             raise InputError(f"Invalid user for {name}: {user!r}.")
         if not isinstance(hostname, str) or not NAME_PATTERN.fullmatch(hostname):
@@ -138,7 +144,7 @@ def load_specs(path: Path) -> Tuple[Spec, ...]:
             raise InputError(f"Container {name} cannot be serialized for hashing: {exc}") from exc
         names.add(name)
         ips.add(address)
-        specs.append(Spec(name, ip, image, hostname, user, hashlib.sha256(encoded).hexdigest()))
+        specs.append(Spec(name, ip, image, hostname, user, hashlib.sha256(encoded).hexdigest(), enabled))
     return tuple(sorted(specs, key=lambda spec: spec.name))
 
 
@@ -153,7 +159,13 @@ def select_specs(specs: Tuple[Spec, ...], names: Sequence[str], all_names: bool,
         raise InputError("Unknown container names: " + ", ".join(unknown))
     if operation == "apply" and not names and not all_names:
         raise InputError("Apply requires container names or --all.")
-    return tuple(by_name[name] for name in sorted(names)) if names else specs
+    selected = tuple(by_name[name] for name in sorted(names)) if names else specs
+    if operation in ("plan", "apply"):
+        disabled = [spec.name for spec in selected if not spec.enabled]
+        if names and disabled:
+            raise InputError("Disabled container names: " + ", ".join(disabled) + ". Set enabled: true to enable them.")
+        selected = tuple(spec for spec in selected if spec.enabled)
+    return selected
 
 
 def run_command(command: Command, action: str) -> str:
@@ -183,6 +195,8 @@ def read_json(text: str, description: str, command: Optional[Command] = None):
 
 
 def observe(specs: Tuple[Spec, ...]) -> Mapping[str, Observation]:
+    if not specs:
+        return {}
     inventory_cmd = Command(SUDO_PODMAN + ("ps", "--all", "--no-trunc", "--format", "json"))
     inventory = read_json(run_command(inventory_cmd, "observation"), "Podman inventory JSON", inventory_cmd)
     if not isinstance(inventory, list):
@@ -285,6 +299,7 @@ def row_data(item: Planned, include_plan: bool) -> dict:
     existing = item.observed if isinstance(item, Preserve) else None
     row = {
         "name": spec.name,
+        "enabled": spec.enabled,
         "state": "missing" if existing is None else "running" if existing.running else "stopped",
         "container_id": existing.container_id if existing else None,
         "desired_hash": spec.declared_hash,
@@ -339,6 +354,8 @@ def print_result(document: dict, as_json: bool) -> None:
         print("OFFLINE fixture: observations are not live container state.")
     for row in document.get("containers", document.get("completed", [])):
         details = f"{row['name']}: {row['state']}"
+        if not row["enabled"]:
+            details += ", disabled"
         if row["declaration"]:
             details += f", declaration {row['declaration']}"
         if "action" in row:

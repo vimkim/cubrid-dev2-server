@@ -434,6 +434,69 @@ class ContainerCliTests(unittest.TestCase):
         self.assertNotEqual(first["desired_hash"], second["desired_hash"])
         self.assertEqual(first["commands"][0]["argv"][-1], second["commands"][0]["argv"][-1])
 
+    def test_disabled_entries_remain_visible_but_bulk_operations_skip_them(self):
+        self.entries[1]["enabled"] = False
+        self.entries[2]["enabled"] = True
+        self.entries[3]["enabled"] = False
+        self.write_config(self.entries)
+        existing = {"id": "disabled-bravo", "running": True, "hash": "old"}
+        self.write_state({"containers": {"bravo": existing}, "groups": {}, "users": {}})
+
+        status = self.assert_success(self.cli("status"))["containers"]
+        self.assertEqual([(row["name"], row["enabled"]) for row in status],
+                         [("alpha", True), ("bravo", False), ("charlie", True), ("delta", False)])
+        self.assertEqual(status[1]["state"], "running")
+        planned = self.assert_success(self.cli("plan", "--all"))["containers"]
+        self.assertEqual([row["name"] for row in planned], ["alpha", "charlie"])
+        self.assertEqual(self.mutations(), [])
+
+        applied = self.assert_success(self.cli("apply", "--all"))["containers"]
+        self.assertEqual([(row["name"], row["outcome"]) for row in applied],
+                         [("alpha", "created"), ("charlie", "created")])
+        self.assertEqual(self.state()["containers"]["bravo"], existing)
+        self.assertNotIn("delta", self.state()["containers"])
+        self.assertNotIn("bob", self.state()["users"])
+        self.assertNotIn("dave", self.state()["users"])
+        plain = subprocess.run([sys.executable, str(CLI), "status", "bravo", "--config", str(self.config)],
+                               cwd=ROOT, env=self.env, text=True, capture_output=True)
+        self.assertEqual(plain.returncode, 0, plain.stderr)
+        self.assertIn("disabled", plain.stdout)
+
+    def test_explicit_disabled_names_fail_before_podman(self):
+        self.entries[1]["enabled"] = False
+        self.write_config(self.entries)
+        for operation in ("plan", "apply"):
+            for names in (("bravo",), ("alpha", "bravo")):
+                with self.subTest(operation=operation, names=names):
+                    result = self.cli(operation, *names)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    error = json.loads(result.stdout)["error"]
+                    self.assertEqual(error["code"], "input_error")
+                    self.assertIn("bravo", error["message"])
+        self.assertEqual(self.calls(), [])
+
+    def test_disabled_only_bulk_operations_do_not_need_podman(self):
+        self.write_config([dict(entry, enabled=False) for entry in self.entries])
+        for operation in ("plan", "apply"):
+            payload = self.assert_success(self.cli(operation, "--all", failure="sudo"))
+            self.assertEqual(payload["containers"], [])
+        self.assertEqual(self.calls(), [])
+
+    def test_enabled_requires_a_boolean_and_disabled_entries_are_validated(self):
+        for value in (None, 0, 1, "false", "true", [], {}):
+            with self.subTest(enabled=value):
+                self.write_config([dict(self.entries[0], enabled=value)])
+                result = self.cli("apply", "--all")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("enabled", json.loads(result.stdout)["error"]["message"])
+        self.write_config([dict(self.entries[0], enable=False)])
+        self.assertEqual(self.cli("apply", "--all").returncode, 2)
+        self.write_config([dict(self.entries[0], enabled=False, ip="invalid")])
+        self.assertEqual(self.cli("apply", "--all").returncode, 2)
+        self.write_config([self.entries[0], dict(self.entries[1], enabled=False, ip=self.entries[0]["ip"])])
+        self.assertEqual(self.cli("apply", "--all").returncode, 2)
+        self.assertEqual(self.calls(), [])
+
     def test_just_recipes_forward_exact_arguments_and_apply_alias(self):
         injection_target = self.directory / "must not exist"
         injection = "$(touch '" + str(injection_target) + "')"

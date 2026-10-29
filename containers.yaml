@@ -79,10 +79,12 @@ containers:
   - name: vimkim1
     ip: 192.168.4.151
     user: vimkim
+    enabled: false
 
   - name: vimkim2
     ip: 192.168.4.152
     user: vimkim
+    enabled: false
 
   - name: chijun1
     ip: 192.168.4.161
