@@ -44,6 +44,14 @@ containers:
     ip: 192.168.4.124
     user: youngjun
 
+  - name: youngjun5
+    ip: 192.168.4.125
+    user: youngjun
+
+  - name: youngjun6
+    ip: 192.168.4.126
+    user: youngjun
+
   - name: yeunjun1
     ip: 192.168.4.131
     user: yeunjun
