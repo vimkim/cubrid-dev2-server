@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "containers": [
+    {"name": "hornetmj1", "state": "missing", "container_id": null, "stored_hash": null},
+    {"name": "hornetmj2", "state": "running", "container_id": "fixture-id-2", "stored_hash": null},
+    {"name": "hornetmj3", "state": "stopped", "container_id": "fixture-id-3", "stored_hash": "old-declaration"}
+  ]
+}

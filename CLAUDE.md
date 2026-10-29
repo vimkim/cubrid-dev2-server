@@ -33,25 +33,25 @@ host  ──┬── ipvlan L2 ──┬── vimkim1   192.168.4.151   (rocky
 # 1. Create the shared L2 network (one-time, per host reboot if it was destroyed)
 ./podman-network.sh                 # creates ipvlan L2 network 'dev2-net'
 
-# 2. Build the base image
-just build                          # rocky8 + systemd  →  local/r8-systemd
+# 2. Build the default roster image
+just build-rocky8-ubi-init          # rocky8 + systemd, versioned Podman image
 # or
-just build-ubuntu24                 # ubuntu24 (no systemd) →  localhost/cubrid-ubuntu24
+just build-ubuntu24                 # separate Ubuntu example image
 
-# 3. Reconcile containers from declarative spec
-just run-containers                 # = python run_dev_containers.py
-# Pass --dry-run to preview.
+# 3. Inspect, preview, and apply an explicit roster selection
+just status vimkim1
+just plan vimkim1
+just apply vimkim1
 ```
 
-`run_dev_containers.py` is **idempotent and conservative**:
+The [README](README.md#run-containers) documents the command options, locked
+Python environment, offline fixtures, and JSON output. `just run-containers`
+is an alias for `just apply`.
 
-| Container state                           | Action                                |
-| ----------------------------------------- | ------------------------------------- |
-| Missing                                   | Create + label with `spec-hash`       |
-| Exists, hash matches YAML                 | Skip silently                         |
-| Exists, hash differs (spec drift)         | **Warn only — never auto-recreate**   |
-
-To apply a changed spec, the human must remove the container manually (preserves `/home` via the named volume).
+The launcher creates missing containers and preserves every existing container.
+Declaration drift compares the stored label with the YAML entry. It does not
+verify runtime configuration or account readiness. If provisioning fails after
+creation, repair the account manually. A retry preserves the container.
 
 ---
 
@@ -69,8 +69,8 @@ To apply a changed spec, the human must remove the container manually (preserves
 | -------------------------- | ----------------------------------------------------------------------------- |
 | `podman-network.sh`        | Creates the `dev2-net` ipvlan L2 network (idempotent; reads `DEV/SUBNET/GW`)  |
 | `containers.yaml`          | Declarative roster: name → ip → user                                          |
-| `run_dev_containers.py`    | Reconcile loop (create-or-skip, hash-labeled, warn-on-drift)                  |
-| `justfile`                 | Thin task wrapper: `build`, `run-containers`, `build-ubuntu24`, `run-vk-ubun24` |
+| `run_dev_containers.py`    | Roster observation, plan, and create-or-preserve execution                   |
+| `justfile`                 | Locked roster commands, verification, image builds, and one-off examples      |
 | `rocky8/Dockerfile`        | Rocky 8.10 + systemd + sshd + dev tools (`@Development Tools`, cmake, ninja, jdk8, systemtap, ncurses) |
 | `rocky9/Dockerfile`        | Rocky 9.6 equivalent (uses `crb` repo where rocky8 used `powertools`)         |
 | `ubuntu24/Dockerfile`      | **Non-systemd** Ubuntu 24 image — runs `sshd -D` via ENTRYPOINT; hardcodes user `vimkim` |
@@ -83,15 +83,14 @@ To apply a changed spec, the human must remove the container manually (preserves
 
 - **Build cache over image size.** The Dockerfiles deliberately use many small `RUN` layers so that editing one package list doesn't reinstall the world. Final image ≈ 2 GB; that is intentional. Do not "optimize" with multi-stage / squashing unless you also retire the daily-rebuild workflow.
 - **Default credentials are dev-only.** Rocky images: `root:changeme`. Ubuntu24: `vimkim:password` + NOPASSWD sudo, `PermitRootLogin no`. These are **safe only on a trusted LAN host** — never publish these images.
-- **Rocky vs Ubuntu divergence is real.** Rocky containers boot `systemd` (and `sshd` is enabled via `systemctl`). Ubuntu24 container has no systemd and starts `sshd` directly. The `ensure_user()` flow in `run_dev_containers.py` assumes a running container you can `podman exec` into — both images satisfy that, but anything that calls `systemctl` inside the container will only work on Rocky.
+- **Rocky vs Ubuntu divergence is real.** Rocky containers boot `systemd` (and `sshd` is enabled via `systemctl`). Ubuntu24 container has no systemd and starts `sshd` directly. The roster provisioner uses `podman exec` after creation. The Ubuntu and CentOS example recipes remain separate from that workflow.
 - **`MAKEFLAGS="-j $(($(nproc)/2))"`** is set in the Rocky images so naive `make` invocations don't OOM the shared host. Keep this in mind before "fixing" it.
 
 ---
 
 ## Known sharp edges (verify before relying on them)
 
-- `just run` invokes `./run-container.sh`, which was removed in commit `f8d4bfb`. The target is stale.
-- `containers.yaml` has no per-entry `image:` field, so every container — including `pgsql*` / `mysql*` — currently defaults to `local/r8-systemd`. The "pgsql/mysql" naming is aspirational; the images are still Rocky 8.
+- `containers.yaml` has no per-entry `image:` field, so every container — including `pgsql*` / `mysql*` — currently defaults to `localhost/local/r8-systemd:250708-ubi-init`. The "pgsql/mysql" naming is aspirational; the images are still Rocky 8.
 - `podman-network.sh`'s header comment says the default `IP_RANGE` is `192.168.4.100/25`, but the code default is `/24`. Trust the code.
 - `podman-multiexec.sh` redirects exec stderr to `/dev/null`, hiding *why* a remote script failed. Strip the `2>/dev/null` when debugging.
 - Empty root-owned file `./oom` at the repo root is an accidental artifact (likely from a sudo'd OOM dump); safe to remove.
@@ -111,7 +110,7 @@ sudo podman exec -it --user vimkim vimkim1 bash
 
 # Tear down + recreate a single container (preserves /home via vol-<name>)
 sudo podman rm -f vimkim1
-just run-containers
+just apply vimkim1
 
 # Recover from "IP address already in use" after a network recreate
 # (see README.md — involves stopping podman/conmon and flushing route + neigh caches)
@@ -121,8 +120,8 @@ just run-containers
 
 ## When working in this repo
 
-- **Default to declarative changes.** If you need a new container, add it to `containers.yaml` and run `just run-containers` — don't `podman run` ad-hoc.
-- **Treat `run_dev_containers.py`'s drift-warning as a feature.** If a spec change must be applied, document it, remove the affected container, and let reconcile re-create it. The named `/home` volume survives.
+- **Default to declarative changes.** If you need a new container, add it to `containers.yaml`, preview it with `just plan <name>`, and apply that name with `just apply <name>`.
+- **Preserve containers with declaration drift.** If a spec change must be applied, document it, remove the affected container, and apply that name. The named `/home` volume survives.
 - **Never `git add` the `oom` file or any `*.tar` / `*.img` build outputs.** This repo is configuration, not artifacts.
 - **Don't add multi-stage or distroless images** without retiring the layer-cache rebuild workflow first — see the README FAQ.
 - **Commit style follows conventional-commits**: `feat(<scope>):`, `fix(<scope>):`, `docs(<scope>):`, `refactor(<scope>):`, `clean(<scope>):`. Match it.

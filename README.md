@@ -20,18 +20,66 @@ just build
 or,
 
 ```bash
-sudo docker build -t local/r8-systemd .
+sudo docker build -t local/r8-systemd ./rocky8
 ```
 
-Both are equivalent.
+Both commands build the unversioned Docker image. The roster launcher defaults
+to `localhost/local/r8-systemd:250708-ubi-init`. To build that Podman image, run
+`just build-rocky8-ubi-init`.
 
 ## Run containers
 
-Edit containers.yaml file, and run
+Install [uv](https://docs.astral.sh/uv/) and `just`. Run `just sync` to create
+the project-local Python environment from `uv.lock`. The recipes use this
+environment without activation or an ambient PyYAML installation.
 
 ```bash
-python run_dev_containers.py
+just status --json
+just plan vimkim1 vimkim2 --json
+just apply vimkim1 vimkim2 --json
 ```
+
+Edit `containers.yaml` before planning a roster change. `status` and `plan`
+inspect all configured names by default. Pass exact names to select a subset.
+`apply` requires exact names or `--all`. It observes the selection again before
+creating any container. `just run-containers` is an alias for `just apply` and
+has the same selection requirement. Use `--config PATH` to select another YAML
+roster. Run `just` to list the available recipes.
+
+Inspection uses `sudo -n` and rootful Podman. Configure noninteractive sudo
+access or authenticate sudo in your terminal before running a live command.
+An inspection error stops the command. It does not mean that containers are
+missing. Preview commands do not create containers or change accounts.
+
+The JSON output has `schema_version`, `operation`, `source`, and sorted
+`containers` fields. States are `missing`, `running`, or `stopped`.
+`declaration` compares the stored `spec-hash` label with the YAML entry. A
+matching label does not verify the actual image, mounts, account, or SSH access.
+`plan` includes the proposed command arguments and provisioning script. Errors
+include an `error` object. A mutation failure also reports completed operations
+and the failed creation attempt. If `podman run` fails, the partial report marks
+creation as `unknown` because Podman can create a container before it fails to
+start. Inspect its state before retrying.
+
+Existing containers are preserved whether running, stopped, matching, or
+drifted. If account provisioning fails after creation, the container remains.
+A later `apply` preserves it and does not retry account setup. Inspect the
+reported failure and repair the account manually.
+
+To exercise the planner without Podman, use the included fixture with its
+explicit missing and present observations:
+
+```bash
+just plan hornetmj1 hornetmj2 hornetmj3 --offline tests/fixtures/inventory.json --json
+```
+
+Offline output is labeled `offline` and does not report live state. A fixture
+must include every selected name. Offline apply is not available.
+
+Run `just check` for the lock check and CLI behavior tests. The tests use fake
+sudo and Podman executables and do not modify host containers. The
+`run-vk-ubun24` and `run-centos6-example` recipes are separate one-off image
+examples. They do not use the roster workflow.
 
 ## Utility Scripts
 
