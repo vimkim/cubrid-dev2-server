@@ -15,7 +15,7 @@ from typing import Dict, Mapping, Optional, Sequence, Tuple, Union
 import yaml
 
 DEFAULT_IMAGE = "localhost/local/r8-systemd:250708-ubi-init"
-SUDO_PODMAN = ("sudo", "-n", "--", "podman")
+SUDO_PODMAN = ("sudo", "--", "podman") if sys.stdin.isatty() else ("sudo", "-n", "--", "podman")
 NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 USER_PATTERN = re.compile(r"[a-z_][a-z0-9_-]*\Z")
 PROVISION = """\
@@ -166,8 +166,8 @@ def run_command(command: Command, action: str) -> str:
             return result.stdout
         detail = result.stderr.strip() or f"exit status {result.returncode}"
     if action == "observation":
-        message = ("Rootful Podman inspection failed. Configure noninteractive sudo access or obtain "
-                   "an authenticated sudo session in your terminal, then retry.")
+        message = ("Rootful Podman inspection failed. Run `sudo -v` in the same terminal, then retry. "
+                   "For unattended commands, configure noninteractive sudo access.")
     else:
         message = "Rootful Podman command failed. Check noninteractive sudo access and Podman output."
     raise WorkflowError(action + "_error", f"{message} {detail}", command)

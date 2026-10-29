@@ -1,9 +1,13 @@
+import fcntl
 import hashlib
 import json
 import os
+import pty
+import select
 import subprocess
 import sys
 import tempfile
+import termios
 import unittest
 from pathlib import Path
 
@@ -37,9 +41,22 @@ failure = os.environ.get("FAKE_FAIL", "")
 if program == "sudo":
     if failure == "sudo":
         fail("sudo: a password is required")
-    if args[:3] != ["-n", "--", "podman"]:
-        fail("expected noninteractive sudo")
-    os.execvp("podman", ["podman"] + args[3:])
+    if args[:3] == ["-n", "--", "podman"]:
+        command = args[3:]
+    elif args[:2] == ["--", "podman"]:
+        command = args[2:]
+    else:
+        fail("expected rootful Podman through sudo")
+    if os.environ.get("FAKE_AUTH_NEEDED"):
+        if "-n" in args:
+            fail("sudo: a password is required")
+        terminal = os.open("/dev/tty", os.O_RDWR)
+        os.write(terminal, b"[sudo] password: ")
+        password = os.read(terminal, 1024)
+        os.close(terminal)
+        if password != b"test-password\n":
+            fail("sudo: authentication failed")
+    os.execvp("podman", ["podman"] + command)
 
 containers = state["containers"]
 if program == "podman":
@@ -194,6 +211,47 @@ class ContainerCliTests(unittest.TestCase):
         self.assertEqual(self.mutations(), [])
         inspected = [call["args"][-1] for call in self.calls() if call["program"] == "podman" and call["args"][0] == "inspect"]
         self.assertEqual(inspected, ["stable-bravo", "stable-charlie", "stable-delta"] * 2)
+
+    def test_terminal_prompts_for_sudo_and_preserves_provisioning_input(self):
+        for operation, prompts in (("status", 1), ("plan", 1), ("apply", 3)):
+            with self.subTest(operation=operation):
+                master, terminal = pty.openpty()
+                self.addCleanup(os.close, master)
+                self.addCleanup(os.close, terminal)
+                settings = termios.tcgetattr(terminal)
+                settings[3] &= ~termios.ECHO
+                termios.tcsetattr(terminal, termios.TCSANOW, settings)
+
+                def attach_terminal():
+                    os.setsid()
+                    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+                process = subprocess.Popen(
+                    ["just", operation, "alpha", "--config", str(self.config), "--json"],
+                    cwd=ROOT, env=dict(self.env, FAKE_AUTH_NEEDED="1"), stdin=terminal,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                    preexec_fn=attach_terminal)
+                self.addCleanup(process.kill)
+                os.write(master, b"test-password\n" * prompts)
+                stdout, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, stderr)
+                self.assertEqual(json.loads(stdout)["operation"], operation)
+                self.assertTrue(select.select([master], [], [], 1)[0], "Missing sudo prompt")
+                self.assertEqual(os.read(master, 4096).count(b"[sudo] password: "), prompts)
+                if operation != "apply":
+                    self.assertEqual(self.mutations(), [])
+                else:
+                    self.assertEqual(self.state()["users"]["alice"]["password"], "changeme")
+
+    def test_without_terminal_sudo_fails_without_prompting_or_mutation(self):
+        self.env["FAKE_AUTH_NEEDED"] = "1"
+        result = self.cli("plan", "alpha")
+        self.assertEqual(result.returncode, 1)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["error"]["code"], "observation_error")
+        self.assertIn("sudo: a password is required", result.stderr)
+        self.assertNotIn("containers", payload)
+        self.assertEqual(self.mutations(), [])
 
     def test_apply_creates_only_selected_then_preserves_existing(self):
         self.mixed_state()

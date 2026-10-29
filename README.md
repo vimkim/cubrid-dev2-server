@@ -46,8 +46,20 @@ creating any container. `just run-containers` is an alias for `just apply` and
 has the same selection requirement. Use `--config PATH` to select another YAML
 roster. Run `just` to list the available recipes.
 
-Inspection uses `sudo -n` and rootful Podman. Configure noninteractive sudo
-access or authenticate sudo in your terminal before running a live command.
+Live commands use rootful Podman because the containers use an ipvlan network.
+Run `just status`, `just plan`, and `just apply` as your normal user. When
+standard input is a terminal, sudo prompts for your password if needed. Sudo
+reads the password from the terminal separately from any provisioning script.
+
+Without a terminal on standard input, commands use `sudo -n` and fail if
+authentication is required. Configure noninteractive sudo access for unattended
+use. To authenticate manually for a terminal session, run:
+
+```bash
+sudo -v
+just plan
+```
+
 An inspection error stops the command. It does not mean that containers are
 missing. Preview commands do not create containers or change accounts.
 
